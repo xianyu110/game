@@ -2,9 +2,27 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
   <title>小游戏合集</title>
   <meta name="description" content="小游戏合集：五子棋、2048、贪吃蛇、打砖块。">
+  
+  <!-- PWA优化 -->
+  <meta name="theme-color" content="#667eea" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#2d2d2d" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="小游戏合集">
+  <meta name="mobile-web-app-capable" content="yes">
+  
+  <!-- 防止数字被识别为电话号码 -->
+  <meta name="format-detection" content="telephone=no">
+  
+  <!-- 优化搜索引擎 -->
+  <meta name="keywords" content="小游戏,五子棋,2048,贪吃蛇,打砖块,扫雷,记忆配对,在线游戏">
+  <meta name="author" content="Game Collection">
+  <meta property="og:title" content="小游戏合集">
+  <meta property="og:description" content="精选小游戏合集，包含五子棋、2048、贪吃蛇等经典游戏">
+  <meta property="og:type" content="website">
   <style>
     :root { 
       color-scheme: light dark;
@@ -139,18 +157,73 @@
     
     /* 移动端优化 */
     @media (max-width: 768px) {
+      body {
+        font-size: 16px; /* 防止iOS Safari自动缩放 */
+        -webkit-text-size-adjust: 100%;
+      }
+      
       .grid {
         grid-template-columns: 1fr;
-        gap: 16px;
+        gap: 20px;
+        padding: 0 4px;
       }
       
       .card {
-        padding: 18px;
-        border-radius: 12px;
+        padding: 24px 20px;
+        border-radius: 16px;
+        margin: 0 8px;
+        box-shadow: 0 4px 16px var(--shadow);
+        min-height: 88px; /* 更大的触摸区域 */
       }
       
       .card h3 {
-        font-size: 18px;
+        font-size: 20px;
+        margin-bottom: 12px;
+      }
+      
+      .card p {
+        font-size: 15px;
+        line-height: 1.5;
+      }
+      
+      header {
+        padding: 24px 20px 16px;
+      }
+      
+      h1 {
+        font-size: 28px;
+        margin-bottom: 16px;
+      }
+      
+      p.desc {
+        font-size: 17px;
+      }
+      
+      main {
+        padding: 20px 16px 40px;
+      }
+      
+      footer {
+        padding: 40px 20px;
+        font-size: 15px;
+      }
+    }
+    
+    @media (max-width: 480px) {
+      .grid {
+        gap: 16px;
+        padding: 0 2px;
+      }
+      
+      .card {
+        padding: 20px 18px;
+        margin: 0 6px;
+        border-radius: 14px;
+        min-height: 80px;
+      }
+      
+      .card h3 {
+        font-size: 19px;
       }
       
       .card p {
@@ -161,38 +234,145 @@
         padding: 20px 16px 12px;
       }
       
-      main {
-        padding: 16px 12px 32px;
+      h1 {
+        font-size: 26px;
       }
-    }
-    
-    @media (max-width: 480px) {
-      .card {
-        padding: 16px;
-        margin: 0 4px;
+      
+      p.desc {
+        font-size: 16px;
       }
       
       main {
-        padding: 16px 8px 24px;
+        padding: 16px 12px 32px;
+      }
+      
+      footer {
+        padding: 32px 16px;
+        font-size: 14px;
       }
     }
     
-    /* 触摸优化 */
+    @media (max-width: 380px) {
+      .card {
+        margin: 0 4px;
+        padding: 18px 16px;
+        min-height: 76px;
+      }
+      
+      .card h3 {
+        font-size: 18px;
+      }
+      
+      .card p {
+        font-size: 14px;
+      }
+      
+      main {
+        padding: 12px 8px 24px;
+      }
+      
+      header {
+        padding: 16px 12px 8px;
+      }
+      
+      h1 {
+        font-size: 24px;
+      }
+      
+      p.desc {
+        font-size: 15px;
+      }
+    }
+    
+    /* 触摸设备优化 */
     @media (hover: none) and (pointer: coarse) {
       .card {
-        min-height: 44px;
+        min-height: 56px; /* Apple建议的最小触摸区域 */
         touch-action: manipulation;
+        -webkit-touch-callout: none; /* 禁用长按菜单 */
+        -webkit-user-select: none;
+        user-select: none;
       }
       
       .card:hover {
         transform: none;
-        box-shadow: 0 2px 8px var(--shadow);
+        box-shadow: 0 4px 16px var(--shadow);
       }
       
       .card:active {
-        transform: scale(0.98);
-        background: var(--card-bg);
-        filter: brightness(0.95);
+        transform: scale(0.97);
+        box-shadow: 0 2px 8px var(--shadow);
+        transition: all 0.1s ease;
+      }
+      
+      /* 提供视觉反馈 */
+      .card::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: var(--text-color);
+        opacity: 0;
+        transition: opacity 0.1s ease;
+        pointer-events: none;
+        border-radius: inherit;
+      }
+      
+      .card:active::after {
+        opacity: 0.05;
+      }
+    }
+    
+    /* PWA和全屏优化 */
+    @media (display-mode: standalone) {
+      header {
+        padding-top: max(24px, env(safe-area-inset-top));
+      }
+      
+      footer {
+        padding-bottom: max(32px, env(safe-area-inset-bottom));
+      }
+    }
+    
+    /* 横屏移动设备优化 */
+    @media (max-width: 768px) and (orientation: landscape) {
+      .grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+      }
+      
+      .card {
+        padding: 16px 18px;
+        min-height: 60px;
+      }
+      
+      .card h3 {
+        font-size: 17px;
+        margin-bottom: 6px;
+      }
+      
+      .card p {
+        font-size: 13px;
+        line-height: 1.4;
+      }
+      
+      header {
+        padding: 16px 20px 12px;
+      }
+      
+      h1 {
+        font-size: 24px;
+        margin-bottom: 8px;
+      }
+      
+      p.desc {
+        font-size: 15px;
+      }
+      
+      main {
+        padding: 12px 16px 24px;
       }
     }
     
