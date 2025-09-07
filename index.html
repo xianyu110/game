@@ -1,364 +1,51 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>五子棋 Gomoku</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>小游戏合集</title>
+  <meta name="description" content="小游戏合集：五子棋、2048、贪吃蛇、打砖块。">
   <style>
     :root { color-scheme: light dark; }
-    body {
-      margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
-      display: grid; place-items: center; min-height: 100vh; background: #f6f7f9;
-    }
-    .wrap { display: grid; gap: 12px; padding: 16px; }
-    h1 { margin: 0; font-size: 20px; text-align: center; }
-    .toolbar { display:flex; gap:12px; justify-content:center; align-items:center; }
-    .status { font-weight: 600; }
-    button { padding: 8px 12px; border-radius: 8px; border: 1px solid #bbb; background: white; cursor: pointer; }
-    button:hover { background: #f0f0f0; }
-    canvas { box-shadow: 0 8px 24px rgba(0,0,0,.08); background: #deb887; border-radius: 8px; touch-action: manipulation; }
-    footer { color: #666; font-size: 12px; text-align: center; }
+    body { margin:0; font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial, PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif; background:#f6f7f9; }
+    header { text-align:center; padding:32px 16px 8px; }
+    h1 { margin:0 0 8px; font-size:24px; }
+    p.desc { margin:0; color:#666; }
+    main { max-width:900px; margin:24px auto; padding:0 16px; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fill,minmax(220px,1fr)); gap:16px; }
+    .card { display:block; padding:16px; border-radius:12px; background:#fff; border:1px solid #ddd; text-decoration:none; color:inherit; transition:transform .1s ease, box-shadow .1s ease; }
+    .card:hover { transform: translateY(-2px); box-shadow:0 10px 24px rgba(0,0,0,.08); }
+    .card h3 { margin:0 0 8px; font-size:18px; }
+    .card p { margin:0; color:#666; font-size:14px; }
+    footer { text-align:center; padding:24px; color:#777; font-size:12px; }
   </style>
-  <meta name="description" content="简洁的五子棋（Gomoku）实现：15x15 棋盘，落子判胜，支持重开。" />
+  <link rel="icon" href="data:,">
 </head>
 <body>
-  <main class="wrap">
-    <h1>五子棋 Gomoku</h1>
-    <div class="toolbar">
-      <span class="status" id="status">黑棋走</span>
-      <label><input type="checkbox" id="vsAi" checked> 人机对战</label>
-      <label>我方执子
-        <select id="side">
-          <option value="black" selected>黑</option>
-          <option value="white">白</option>
-        </select>
-      </label>
-      <button id="reset">重开</button>
+  <header>
+    <h1>小游戏合集</h1>
+    <p class="desc">点击选择游戏开始游玩</p>
+  </header>
+  <main>
+    <div class="grid">
+      <a class="card" href="gomoku.html">
+        <h3>五子棋</h3>
+        <p>15x15，人机/双人对战。</p>
+      </a>
+      <a class="card" href="2048.html">
+        <h3>2048</h3>
+        <p>方向键或滑动操作，合并数字至 2048。</p>
+      </a>
+      <a class="card" href="snake.html">
+        <h3>贪吃蛇</h3>
+        <p>方向键控制，撞墙或自撞即结束。</p>
+      </a>
+      <a class="card" href="breakout.html">
+        <h3>打砖块</h3>
+        <p>左右方向键或鼠标移动挡板，打掉砖块。</p>
+      </a>
     </div>
-    <canvas id="board" width="600" height="600" aria-label="五子棋棋盘" role="img"></canvas>
-    <footer>提示：点击交叉点处落子，先连成五子者胜。</footer>
   </main>
-
-  <script>
-    (function(){
-      const SIZE = 15;            // 15x15 棋盘
-      const CELL = 40;            // 格间距（逻辑像素）
-      const MARGIN = 20;          // 边距
-      const PX = MARGIN * 2 + CELL * (SIZE - 1); // 逻辑像素下画布边长
-
-      const canvas = document.getElementById('board');
-      const statusEl = document.getElementById('status');
-      const resetBtn = document.getElementById('reset');
-      const vsAiEl = document.getElementById('vsAi');
-      const sideEl = document.getElementById('side');
-
-      // 处理高分屏，保证清晰度
-      const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
-      canvas.style.width = PX + 'px';
-      canvas.style.height = PX + 'px';
-      canvas.width = PX * dpr;
-      canvas.height = PX * dpr;
-      const ctx = canvas.getContext('2d');
-      ctx.scale(dpr, dpr);
-
-      // 棋盘状态：0 空，1 黑，2 白
-      const board = Array.from({length: SIZE}, () => Array(SIZE).fill(0));
-      let player = 1;     // 1 黑先
-      let over = false;
-      let last = null;    // 记录上一步坐标，用于高亮
-      let thinking = false; // 电脑思考中
-
-      // 人机设置
-      let vsAI = true;
-      let human = 1;   // 1=黑, 2=白
-      let ai = 2;
-
-      function drawBoard() {
-        // 背景木纹色已由 CSS 提供；绘制网格
-        ctx.clearRect(0, 0, PX, PX);
-        // 轻微木纹感
-        const grad = ctx.createLinearGradient(0,0,0,PX);
-        grad.addColorStop(0, 'rgba(0,0,0,0.02)');
-        grad.addColorStop(1, 'rgba(255,255,255,0.02)');
-        ctx.fillStyle = grad;
-        ctx.fillRect(0,0,PX,PX);
-
-        ctx.strokeStyle = '#333';
-        ctx.lineWidth = 1;
-        ctx.lineCap = 'round';
-        for (let i = 0; i < SIZE; i++) {
-          const p = MARGIN + i * CELL;
-          // 横线
-          ctx.beginPath();
-          ctx.moveTo(MARGIN, p);
-          ctx.lineTo(PX - MARGIN, p);
-          ctx.stroke();
-          // 竖线
-          ctx.beginPath();
-          ctx.moveTo(p, MARGIN);
-          ctx.lineTo(p, PX - MARGIN);
-          ctx.stroke();
-        }
-
-        // 星位（15路：3, 7, 11）
-        const stars = [3, 7, 11];
-        ctx.fillStyle = '#222';
-        for (const ix of stars) {
-          for (const iy of stars) {
-            const x = MARGIN + ix * CELL;
-            const y = MARGIN + iy * CELL;
-            ctx.beginPath();
-            ctx.arc(x, y, 3.5, 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-      }
-
-      function drawStone(i, j, color) {
-        const x = MARGIN + i * CELL;
-        const y = MARGIN + j * CELL;
-        const r = CELL * 0.45;
-        const g = ctx.createRadialGradient(x - r*0.35, y - r*0.35, r*0.1, x, y, r);
-        if (color === 1) { // 黑
-          g.addColorStop(0, '#555');
-          g.addColorStop(1, '#000');
-        } else { // 白
-          g.addColorStop(0, '#fff');
-          g.addColorStop(1, '#cfcfcf');
-        }
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(x, y, r, 0, Math.PI * 2);
-        ctx.fill();
-
-        // 最后一步高亮小红点
-        if (last && last[0] === i && last[1] === j) {
-          ctx.fillStyle = '#d11';
-          ctx.beginPath();
-          ctx.arc(x, y, 4, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      }
-
-      function redraw() {
-        drawBoard();
-        for (let i = 0; i < SIZE; i++) {
-          for (let j = 0; j < SIZE; j++) {
-            if (board[i][j]) drawStone(i, j, board[i][j]);
-          }
-        }
-      }
-
-      function screenToGrid(clientX, clientY) {
-        const rect = canvas.getBoundingClientRect();
-        const x = clientX - rect.left;
-        const y = clientY - rect.top;
-        const i = Math.round((x - MARGIN) / CELL);
-        const j = Math.round((y - MARGIN) / CELL);
-        if (i < 0 || i >= SIZE || j < 0 || j >= SIZE) return null;
-        // 限制必须落在交叉点附近（距离不超过 0.45*CELL）
-        const gx = MARGIN + i * CELL;
-        const gy = MARGIN + j * CELL;
-        const dist = Math.hypot(x - gx, y - gy);
-        if (dist <= CELL * 0.45) return [i, j];
-        return null;
-      }
-
-      function checkWin(i, j, who) {
-        const dirs = [ [1,0], [0,1], [1,1], [1,-1] ];
-        for (const [dx, dy] of dirs) {
-          let cnt = 1;
-          // 正向
-          let x = i + dx, y = j + dy;
-          while (x>=0 && x<SIZE && y>=0 && y<SIZE && board[x][y]===who) { cnt++; x+=dx; y+=dy; }
-          // 反向
-          x = i - dx; y = j - dy;
-          while (x>=0 && x<SIZE && y>=0 && y<SIZE && board[x][y]===who) { cnt++; x-=dx; y-=dy; }
-          if (cnt >= 5) return true;
-        }
-        return false;
-      }
-
-      function setStatus(text) { statusEl.textContent = text; }
-      function updateStatus() {
-        if (over) return;
-        const side = (player === 1 ? '黑' : '白') + '棋走';
-        if (vsAI) {
-          statusEl.textContent = side + (player === human ? '（你）' : '（电脑）');
-        } else {
-          statusEl.textContent = side;
-        }
-      }
-
-      canvas.addEventListener('click', (e) => {
-        if (over || thinking) return;
-        const pos = screenToGrid(e.clientX, e.clientY);
-        if (!pos) return;
-        const [i, j] = pos;
-        if (board[i][j] !== 0) return;
-        if (vsAI && player !== human) return; // 电脑回合，忽略点击
-        board[i][j] = player;
-        last = [i, j];
-        redraw();
-        if (checkWin(i, j, player)) {
-          over = true;
-          setStatus((player === 1 ? '黑' : '白') + '棋胜利！点击重开继续。');
-          return;
-        }
-        player = (player === 1 ? 2 : 1);
-        updateStatus();
-        if (vsAI) maybeAIMove();
-      }, { passive: true });
-
-      // 触摸支持
-      canvas.addEventListener('touchend', (e) => {
-        if (e.changedTouches && e.changedTouches.length) {
-          const t = e.changedTouches[0];
-          canvas.dispatchEvent(new MouseEvent('click', {clientX: t.clientX, clientY: t.clientY}));
-        }
-        e.preventDefault();
-      }, { passive: false });
-
-      function resetGame() {
-        for (let i = 0; i < SIZE; i++) board[i].fill(0);
-        player = 1; over = false; last = null; thinking = false;
-        redraw();
-        updateStatus();
-        // 如果电脑执黑，则先手
-        if (vsAI && human === 2) {
-          maybeAIMove();
-        }
-      }
-
-      resetBtn.addEventListener('click', () => { resetGame(); });
-
-      // 人机设置交互
-      function syncControls() {
-        vsAiEl.checked = vsAI;
-        sideEl.value = human === 1 ? 'black' : 'white';
-        sideEl.disabled = !vsAI;
-      }
-      vsAiEl.addEventListener('change', () => {
-        vsAI = vsAiEl.checked;
-        sideEl.disabled = !vsAI;
-        updateStatus();
-        if (vsAI) maybeAIMove();
-      });
-      sideEl.addEventListener('change', () => {
-        human = sideEl.value === 'black' ? 1 : 2;
-        ai = (human === 1 ? 2 : 1);
-        resetGame();
-      });
-
-      function maybeAIMove() {
-        if (!vsAI || over || player !== ai) return;
-        aiMove();
-      }
-
-      function aiMove() {
-        if (thinking || over || !vsAI || player !== ai) return;
-        thinking = true;
-        setStatus('电脑思考中…');
-        setTimeout(() => {
-          const move = pickBestMove();
-          if (!move) { thinking = false; updateStatus(); return; }
-          const [i, j] = move;
-          board[i][j] = ai;
-          last = [i, j];
-          redraw();
-          if (checkWin(i, j, ai)) {
-            over = true;
-            setStatus((ai === 1 ? '黑' : '白') + '棋（电脑）胜利！点击重开继续。');
-          } else {
-            player = human;
-            updateStatus();
-          }
-          thinking = false;
-        }, 80);
-      }
-
-      function pickBestMove() {
-        // 如果中心空，优先中心
-        const mid = (SIZE - 1) >> 1;
-        if (board[mid][mid] === 0) return [mid, mid];
-
-        let best = null;
-        let bestScore = -Infinity;
-
-        // 预判必杀/必防
-        for (let i = 0; i < SIZE; i++) {
-          for (let j = 0; j < SIZE; j++) {
-            if (board[i][j] !== 0) continue;
-            board[i][j] = ai;
-            const winAI = checkWin(i, j, ai);
-            board[i][j] = 0;
-            if (winAI) return [i, j];
-          }
-        }
-        for (let i = 0; i < SIZE; i++) {
-          for (let j = 0; j < SIZE; j++) {
-            if (board[i][j] !== 0) continue;
-            board[i][j] = human;
-            const winH = checkWin(i, j, human);
-            board[i][j] = 0;
-            if (winH) return [i, j];
-          }
-        }
-
-        for (let i = 0; i < SIZE; i++) {
-          for (let j = 0; j < SIZE; j++) {
-            if (board[i][j] !== 0) continue;
-            const attack = evaluatePoint(i, j, ai);
-            const defend = evaluatePoint(i, j, human);
-            // 略偏防守，避免被抢先
-            let score = Math.max(attack, defend * 0.98);
-            // 中央倾向
-            const dist = Math.abs(i - mid) + Math.abs(j - mid);
-            score += (SIZE - dist) * 0.1;
-            if (score > bestScore) { bestScore = score; best = [i, j]; }
-          }
-        }
-        return best;
-      }
-
-      function evaluatePoint(i, j, who) {
-        // 空位评分，四向合计
-        let s = 0;
-        const dirs = [ [1,0], [0,1], [1,1], [1,-1] ];
-        for (const [dx, dy] of dirs) {
-          s += lineScore(i, j, dx, dy, who);
-        }
-        return s;
-      }
-
-      function lineScore(i, j, dx, dy, who) {
-        // 不实际落子，按假设 who 在 (i,j) 计算
-        const f = scan(i, j, dx, dy, who);
-        const b = scan(i, j, -dx, -dy, who);
-        const len = 1 + f.c + b.c; // 包含该子
-        const open = (f.open?1:0) + (b.open?1:0);
-        // 评分表（经验值）
-        if (len >= 5) return 100000;
-        if (len === 4) return open === 2 ? 50000 : 10000;
-        if (len === 3) return open === 2 ? 5000 : 800;
-        if (len === 2) return open === 2 ? 200 : 50;
-        return open >= 1 ? 10 : 0;
-      }
-
-      function scan(i, j, dx, dy, who) {
-        let c = 0; // 连子数
-        let x = i + dx, y = j + dy;
-        while (x>=0 && x<SIZE && y>=0 && y<SIZE && board[x][y] === who) { c++; x += dx; y += dy; }
-        const open = (x>=0 && x<SIZE && y>=0 && y<SIZE && board[x][y] === 0);
-        return { c, open };
-      }
-
-      // 初次绘制与控件同步
-      redraw();
-      syncControls();
-      updateStatus();
-      if (vsAI && human === 2) maybeAIMove();
-    })();
-  </script>
+  <footer>提示：如在手机上，优先横屏体验更佳。</footer>
 </body>
 </html>

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>打砖块</title>
+  <style>
+    :root{ color-scheme: light dark }
+    body{ margin:0; display:grid; place-items:center; min-height:100vh; background:#f6f7f9; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,PingFang SC,Noto Sans CJK SC,Microsoft YaHei,sans-serif }
+    .wrap{ text-align:center; padding:16px }
+    h1{ margin:0 0 8px; font-size:22px }
+    .toolbar{ display:flex; gap:12px; justify-content:center; align-items:center; margin-bottom:12px }
+    .score{ font-weight:700 }
+    button{ padding:8px 12px; border-radius:8px; border:1px solid #bbb; background:#fff; cursor:pointer }
+    button:hover{ background:#f0f0f0 }
+    canvas{ background:#222; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.08); touch-action:none }
+    a.back{ display:inline-block; margin-top:10px; color:#06c; text-decoration:none }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>打砖块</h1>
+    <div class="toolbar">
+      <span>分数：<span class="score" id="score">0</span></span>
+      <span>生命：<span id="lives">3</span></span>
+      <button id="new">重开</button>
+      <a class="back" href="index.html">返回目录</a>
+    </div>
+    <canvas id="c" width="560" height="420" aria-label="打砖块"></canvas>
+  </div>
+  <script>
+    (function(){
+      const canvas = document.getElementById('c');
+      const ctx = canvas.getContext('2d');
+      const scoreEl = document.getElementById('score');
+      const livesEl = document.getElementById('lives');
+      const newBtn = document.getElementById('new');
+
+      const W = canvas.width, H = canvas.height;
+      const PADDLE_W = 90, PADDLE_H = 12, PADDLE_Y = H - 24;
+      const BALL_R = 7;
+      const ROWS = 5, COLS = 10, BW = 48, BH = 18, GAP = 8, TOP = 60, LEFT = (W - (COLS*BW + (COLS-1)*GAP))/2;
+
+      let paddleX, ball, vel, bricks, score, lives, running, mouseX;
+
+      function init(){
+        paddleX = (W - PADDLE_W)/2;
+        ball = {x: W/2, y: PADDLE_Y - BALL_R - 1};
+        vel = {x: 3.2, y: -3.4};
+        bricks = Array.from({length:ROWS}, (_,r)=>Array.from({length:COLS}, (_,c)=>({x:LEFT+c*(BW+GAP), y:TOP+r*(BH+GAP), hit:false, hp:1})));
+        score = 0; lives = 3; running = true; mouseX=null;
+        loop();
+      }
+
+      function loop(){
+        draw();
+        if(running) requestAnimationFrame(update);
+      }
+
+      function update(){
+        // paddle move (mouse)
+        if(mouseX!=null) paddleX = Math.max(0, Math.min(W-PADDLE_W, mouseX - PADDLE_W/2));
+        // ball
+        ball.x += vel.x; ball.y += vel.y;
+        // wall
+        if(ball.x < BALL_R || ball.x > W-BALL_R) vel.x *= -1;
+        if(ball.y < BALL_R) vel.y *= -1;
+        // paddle bounce
+        if(ball.y+BALL_R >= PADDLE_Y && ball.y+BALL_R <= PADDLE_Y+PADDLE_H && ball.x >= paddleX && ball.x <= paddleX+PADDLE_W && vel.y>0){
+          const hit = (ball.x - (paddleX + PADDLE_W/2)) / (PADDLE_W/2);
+          vel.x = hit * 4.2; vel.y *= -1;
+        }
+        // bricks
+        for(let r=0;r<ROWS;r++){
+          for(let c=0;c<COLS;c++){
+            const b = bricks[r][c]; if(b.hit) continue;
+            if(ball.x> b.x && ball.x < b.x+BW && ball.y> b.y && ball.y < b.y+BH){
+              b.hit=true; score+=10;
+              // reflect by shallower penetration axis
+              const dx = Math.min(Math.abs(ball.x - b.x), Math.abs(ball.x - (b.x+BW)));
+              const dy = Math.min(Math.abs(ball.y - b.y), Math.abs(ball.y - (b.y+BH)));
+              if(dx<dy) vel.x*=-1; else vel.y*=-1;
+            }
+          }
+        }
+        // lose life
+        if(ball.y > H+BALL_R){
+          lives--; if(lives<=0){ running=false; }
+          else { ball = {x: W/2, y: PADDLE_Y - BALL_R - 1}; vel = {x: 3.2, y: -3.4}; }
+        }
+        // win
+        if(bricks.flat().every(b=>b.hit)) running=false;
+        loop();
+      }
+
+      function draw(){
+        ctx.clearRect(0,0,W,H);
+        // background grid gradient
+        const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#222'); g.addColorStop(1,'#1b1b1b'); ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+        // paddle
+        ctx.fillStyle = '#3498db'; ctx.fillRect(paddleX, PADDLE_Y, PADDLE_W, PADDLE_H);
+        // ball
+        ctx.fillStyle = '#ecf0f1'; ctx.beginPath(); ctx.arc(ball.x, ball.y, BALL_R, 0, Math.PI*2); ctx.fill();
+        // bricks
+        for(let r=0;r<ROWS;r++){
+          for(let c=0;c<COLS;c++){
+            const b = bricks[r][c]; if(b.hit) continue;
+            ctx.fillStyle = `hsl(${(r*COLS+c)*12%360} 70% 55%)`;
+            ctx.fillRect(b.x, b.y, BW, BH);
+          }
+        }
+        // hud
+        scoreEl.textContent = score; livesEl.textContent = lives;
+        if(!running){
+          ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fillRect(0,0,W,H);
+          ctx.fillStyle='#fff'; ctx.font='bold 28px system-ui'; ctx.textAlign='center'; ctx.textBaseline='middle';
+          ctx.fillText(bricks.flat().every(b=>b.hit)?'通关！':'游戏结束', W/2, H/2);
+          ctx.font='16px system-ui'; ctx.fillText('点击重开', W/2, H/2+26);
+        }
+      }
+
+      // input
+      window.addEventListener('mousemove', e=>{ const rect=canvas.getBoundingClientRect(); mouseX = e.clientX-rect.left; });
+      window.addEventListener('keydown', e=>{
+        if(e.key==='ArrowLeft') paddleX = Math.max(0, paddleX-24);
+        if(e.key==='ArrowRight') paddleX = Math.min(W-PADDLE_W, paddleX+24);
+      });
+      canvas.addEventListener('click', ()=>{ if(!running){ init(); running=true; }});
+      newBtn.addEventListener('click', init);
+
+      init();
+    })();
+  </script>
+</body>
+</html>
+
