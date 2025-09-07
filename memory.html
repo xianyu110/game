@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>记忆配对</title>
+  <style>
+    :root{ color-scheme: light dark }
+    body{ margin:0; display:grid; place-items:center; min-height:100vh; background:#f6f7f9; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,PingFang SC,Noto Sans CJK SC,Microsoft YaHei,sans-serif }
+    .wrap{ text-align:center; padding:16px }
+    h1{ margin:0 0 8px; font-size:22px }
+    .toolbar{ display:flex; gap:12px; justify-content:center; align-items:center; margin-bottom:12px; flex-wrap:wrap }
+    canvas{ background:#1f2937; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.08); touch-action:none }
+    button, select{ padding:8px 12px; border-radius:8px; border:1px solid #bbb; background:#fff; cursor:pointer }
+    button:hover{ background:#f0f0f0 }
+    a.back{ display:inline-block; margin-top:10px; color:#06c; text-decoration:none }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>记忆配对</h1>
+    <div class="toolbar">
+      <span>步数：<span id="moves">0</span></span>
+      <span>用时：<span id="time">0</span>s</span>
+      <label>难度
+        <select id="difficulty">
+          <option value="easy">简单 (4x4)</option>
+          <option value="normal" selected>普通 (6x4)</option>
+          <option value="hard">困难 (6x6)</option>
+        </select>
+      </label>
+      <button id="new">重开</button>
+      <button id="rank">排行榜</button>
+      <a class="back" href="index.html">返回目录</a>
+    </div>
+    <canvas id="c" width="520" height="520" aria-label="记忆配对"></canvas>
+  </div>
+  <script src="lib/leaderboard.js"></script>
+  <script>
+    (function(){
+      const canvas = document.getElementById('c');
+      const ctx = canvas.getContext('2d');
+      const movesEl = document.getElementById('moves');
+      const timeEl = document.getElementById('time');
+      const diffSel = document.getElementById('difficulty');
+      const newBtn = document.getElementById('new');
+      const rankBtn = document.getElementById('rank');
+
+      let rows, cols, cards, opened, solved, first, second, lock, moves, started, startTime, timer, W, H, cellW, cellH;
+      const EMOJIS = [...'🍎🍊🍋🍉🍇🍓🍑🍒🥝🍍🥥🥑🍅🥕🌽🥔🥦🍄🧀🥨🍗🍣🍤🍩🍪🍰🍫🍬🥤☕️🍺🍷🎈⭐️⚽️🛵🚗✈️⛵️🚀🐶🐱🐼🐧🦊🐻‍❄️🦄🐸🐵'];
+
+      function setup(){
+        const d=diffSel.value;
+        if(d==='easy'){ rows=4; cols=4; }
+        else if(d==='normal'){ rows=4; cols=6; }
+        else { rows=6; cols=6; }
+        W = Math.min(600, cols*86); H = Math.min(700, rows*86);
+        canvas.width=W; canvas.height=H; cellW=W/cols; cellH=H/rows;
+      }
+
+      function init(){
+        setup();
+        const n = rows*cols/2;
+        const picks = EMOJIS.slice(0).sort(()=>Math.random()-0.5).slice(0,n);
+        const pool = picks.concat(picks).sort(()=>Math.random()-0.5);
+        cards = []; for(let i=0;i<rows;i++) for(let j=0;j<cols;j++) cards.push({r:i,c:j,val:pool[i*cols+j]});
+        opened = new Set(); solved = new Set(); first=null; second=null; lock=false; moves=0; started=false; startTime=0; movesEl.textContent='0'; timeEl.textContent='0';
+        if(timer){ clearInterval(timer); timer=null; }
+        draw();
+      }
+
+      function startTimer(){ if(timer) return; startTime=Date.now(); timer=setInterval(()=>{ timeEl.textContent = Math.floor((Date.now()-startTime)/1000); }, 250); }
+      function stopTimer(){ if(timer){ clearInterval(timer); timer=null; } }
+
+      function draw(){
+        ctx.clearRect(0,0,W,H);
+        for(const card of cards){
+          const x=card.c*cellW, y=card.r*cellH;
+          const open = opened.has(id(card)) || solved.has(id(card));
+          if(open){
+            ctx.fillStyle = solved.has(id(card))? '#16a085' : '#2980b9';
+            roundRect(x+6,y+6,cellW-12,cellH-12,12); ctx.fillStyle='#fff';
+            ctx.font=`bold ${Math.floor(Math.min(cellW,cellH)*0.45)}px system-ui,Apple Color Emoji`;
+            ctx.textAlign='center'; ctx.textBaseline='middle';
+            ctx.fillText(card.val, x+cellW/2, y+cellH/2+2);
+          } else {
+            ctx.fillStyle='#374151'; roundRect(x+6,y+6,cellW-12,cellH-12,12);
+          }
+        }
+      }
+
+      function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); ctx.fill(); }
+      const id = (card)=> card.r+','+card.c;
+
+      function clickAt(px,py){
+        if(lock) return; const c=Math.floor(px/cellW), r=Math.floor(py/cellH); const card = cards.find(k=>k.r===r&&k.c===c); if(!card) return;
+        const key = id(card); if(solved.has(key) || opened.has(key)) return;
+        if(!started){ started=true; startTimer(); }
+        opened.add(key);
+        if(!first){ first=card; draw(); return; }
+        second=card; moves++; movesEl.textContent=String(moves); draw();
+        lock=true;
+        setTimeout(()=>{
+          if(first.val===second.val){ solved.add(id(first)); solved.add(id(second)); }
+          opened.delete(id(first)); opened.delete(id(second));
+          first=null; second=null; lock=false; draw();
+          checkWin();
+        }, 380);
+      }
+
+      function checkWin(){
+        if(solved.size === cards.length){ stopTimer(); const elapsed=Date.now()-startTime; LB.record({key:'memory', difficulty: diffSel.value, score: elapsed, better:'asc', unit:'ms', meta:{moves}}); }
+      }
+
+      canvas.addEventListener('click', e=>{ const rect=canvas.getBoundingClientRect(); clickAt(e.clientX-rect.left, e.clientY-rect.top); });
+      canvas.addEventListener('touchend', e=>{ const t=e.changedTouches[0]; if(!t) return; const rect=canvas.getBoundingClientRect(); clickAt(t.clientX-rect.left, t.clientY-rect.top); e.preventDefault(); }, {passive:false});
+      diffSel.addEventListener('change', init);
+      newBtn.addEventListener('click', init);
+      rankBtn.addEventListener('click', ()=> LB.show({key:'memory', difficulty: diffSel.value, better:'asc', unit:'ms', title:'记忆配对 排行榜（用时越少越好）'}));
+
+      init();
+    })();
+  </script>
+</body>
+</html>
+

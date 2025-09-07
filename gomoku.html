@@ -33,12 +33,22 @@
           <option value="white">白</option>
         </select>
       </label>
+      <label>难度
+        <select id="difficulty">
+          <option value="easy">简单</option>
+          <option value="normal" selected>普通</option>
+          <option value="hard">困难</option>
+        </select>
+      </label>
       <button id="reset">重开</button>
+      <button id="rank">排行榜</button>
+      <a class="back" href="index.html" style="color:#06c;text-decoration:none">返回目录</a>
     </div>
     <canvas id="board" width="600" height="600" aria-label="五子棋棋盘" role="img"></canvas>
     <footer>提示：点击交叉点处落子，先连成五子者胜。</footer>
   </main>
 
+  <script src="lib/leaderboard.js"></script>
   <script>
     (function(){
       const SIZE = 15;            // 15x15 棋盘
@@ -51,6 +61,8 @@
       const resetBtn = document.getElementById('reset');
       const vsAiEl = document.getElementById('vsAi');
       const sideEl = document.getElementById('side');
+      const diffSel = document.getElementById('difficulty');
+      const rankBtn = document.getElementById('rank');
 
       // 处理高分屏，保证清晰度
       const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
@@ -72,6 +84,8 @@
       let vsAI = true;
       let human = 1;   // 1=黑, 2=白
       let ai = 2;
+      let aiLevel = 'normal';
+      let startTime = null;
 
       function drawBoard() {
         // 背景木纹色已由 CSS 提供；绘制网格
@@ -197,12 +211,14 @@
         const [i, j] = pos;
         if (board[i][j] !== 0) return;
         if (vsAI && player !== human) return; // 电脑回合，忽略点击
+        if (!startTime) startTime = Date.now();
         board[i][j] = player;
         last = [i, j];
         redraw();
         if (checkWin(i, j, player)) {
           over = true;
           setStatus((player === 1 ? '黑' : '白') + '棋胜利！点击重开继续。');
+          onGameOver(true);
           return;
         }
         player = (player === 1 ? 2 : 1);
@@ -221,7 +237,8 @@
 
       function resetGame() {
         for (let i = 0; i < SIZE; i++) board[i].fill(0);
-        player = 1; over = false; last = null; thinking = false;
+        player = 1; over = false; last = null; thinking = false; startTime = null;
+        aiLevel = diffSel.value;
         redraw();
         updateStatus();
         // 如果电脑执黑，则先手
@@ -249,6 +266,8 @@
         ai = (human === 1 ? 2 : 1);
         resetGame();
       });
+      diffSel.addEventListener('change', resetGame);
+      rankBtn.addEventListener('click', ()=> LB.show({key:'gomoku', difficulty: diffSel.value, better:'asc', unit:'ms', title:'五子棋 排行榜（用时越少越好）'}));
 
       function maybeAIMove() {
         if (!vsAI || over || player !== ai) return;
@@ -269,6 +288,7 @@
           if (checkWin(i, j, ai)) {
             over = true;
             setStatus((ai === 1 ? '黑' : '白') + '棋（电脑）胜利！点击重开继续。');
+            onGameOver(false);
           } else {
             player = human;
             updateStatus();
@@ -305,20 +325,76 @@
           }
         }
 
+        // 候选集合：靠近已有棋子，减少搜索
+        const cands = [];
         for (let i = 0; i < SIZE; i++) {
           for (let j = 0; j < SIZE; j++) {
             if (board[i][j] !== 0) continue;
+            if (!hasNeighbor(i,j,2)) continue;
             const attack = evaluatePoint(i, j, ai);
             const defend = evaluatePoint(i, j, human);
-            // 略偏防守，避免被抢先
             let score = Math.max(attack, defend * 0.98);
-            // 中央倾向
             const dist = Math.abs(i - mid) + Math.abs(j - mid);
             score += (SIZE - dist) * 0.1;
-            if (score > bestScore) { bestScore = score; best = [i, j]; }
+            cands.push({i,j,score});
           }
         }
-        return best;
+        cands.sort((a,b)=>b.score-a.score);
+        // 简单难度：从前若干个里随机挑，并注入小概率失误
+        if (aiLevel === 'easy') {
+          const top = cands.slice(0, 5);
+          if (Math.random() < 0.12) return top[top.length-1] ? [top[top.length-1].i, top[top.length-1].j] : (cands[0]?[cands[0].i,cands[0].j]:null);
+          const pick = top[Math.floor(Math.random()*Math.max(1, top.length))] || cands[0];
+          return pick ? [pick.i, pick.j] : null;
+        }
+        // 困难：简易 2 层搜索（对手最佳应对）
+        if (aiLevel === 'hard') {
+          const top = cands.slice(0, 10);
+          let choice = null, bestVal = -Infinity;
+          for (const mv of top) {
+            board[mv.i][mv.j] = ai;
+            let worst = Infinity;
+            const replies = []; // 生成对手候选
+            for (let i=0;i<SIZE;i++) for (let j=0;j<SIZE;j++) if(board[i][j]===0 && hasNeighbor(i,j,2)){
+              const val = Math.max(evaluatePoint(i,j,human), evaluatePoint(i,j,ai)*0.9);
+              replies.push({i,j,val});
+            }
+            replies.sort((a,b)=>b.val-a.val);
+            for (const rp of replies.slice(0,8)) {
+              board[rp.i][rp.j] = human;
+              const val = staticEval();
+              worst = Math.min(worst, val);
+              board[rp.i][rp.j] = 0;
+            }
+            board[mv.i][mv.j] = 0;
+            if (worst > bestVal) { bestVal = worst; choice = [mv.i, mv.j]; }
+          }
+          if (choice) return choice;
+        }
+        // 普通：取最佳
+        const bestCand = cands[0];
+        return bestCand ? [bestCand.i, bestCand.j] : best;
+      }
+
+      function hasNeighbor(i,j,dist){
+        for (let di=-dist; di<=dist; di++){
+          for (let dj=-dist; dj<=dist; dj++){
+            if(di===0&&dj===0) continue;
+            const x=i+di, y=j+dj; if(x<0||x>=SIZE||y<0||y>=SIZE) continue;
+            if(board[x][y]!==0) return true;
+          }
+        }
+        return false;
+      }
+
+      function staticEval(){
+        // 简单静态估值：己方潜力-对方潜力
+        let sAi=0, sHu=0;
+        for (let i=0;i<SIZE;i++) for (let j=0;j<SIZE;j++) if(board[i][j]===0){
+          sAi += evaluatePoint(i,j,ai);
+          sHu += evaluatePoint(i,j,human);
+        }
+        return sAi - sHu*0.98;
       }
 
       function evaluatePoint(i, j, who) {
@@ -351,6 +427,14 @@
         while (x>=0 && x<SIZE && y>=0 && y<SIZE && board[x][y] === who) { c++; x += dx; y += dy; }
         const open = (x>=0 && x<SIZE && y>=0 && y<SIZE && board[x][y] === 0);
         return { c, open };
+      }
+
+      function onGameOver(win){
+        if (!startTime) return;
+        const elapsed = Date.now() - startTime;
+        if (win) {
+          LB.record({key:'gomoku', difficulty: diffSel.value, score: elapsed, better:'asc', unit:'ms'});
+        }
       }
 
       // 初次绘制与控件同步

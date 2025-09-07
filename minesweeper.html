@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>扫雷</title>
+  <style>
+    :root{ color-scheme: light dark }
+    body{ margin:0; display:grid; place-items:center; min-height:100vh; background:#f6f7f9; font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,PingFang SC,Noto Sans CJK SC,Microsoft YaHei,sans-serif }
+    .wrap{ text-align:center; padding:16px }
+    h1{ margin:0 0 8px; font-size:22px }
+    .toolbar{ display:flex; gap:12px; justify-content:center; align-items:center; margin-bottom:12px; flex-wrap:wrap }
+    .hud{ display:flex; gap:12px; justify-content:center; }
+    canvas{ background:#c0c0c0; border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.08); touch-action:none }
+    button, select{ padding:8px 12px; border-radius:8px; border:1px solid #bbb; background:#fff; cursor:pointer }
+    button:hover{ background:#f0f0f0 }
+    a.back{ display:inline-block; margin-top:10px; color:#06c; text-decoration:none }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>扫雷</h1>
+    <div class="toolbar">
+      <div class="hud">
+        <span>用时：<span id="time">0</span>s</span>
+        <span>剩余雷：<span id="remain">0</span></span>
+      </div>
+      <label>难度
+        <select id="difficulty">
+          <option value="easy">入门 (9x9/10)</option>
+          <option value="normal" selected>中级 (16x16/40)</option>
+          <option value="hard">高级 (16x30/99)</option>
+        </select>
+      </label>
+      <button id="new">重开</button>
+      <button id="rank">排行榜</button>
+      <a class="back" href="index.html">返回目录</a>
+    </div>
+    <canvas id="c" width="480" height="480" aria-label="扫雷"></canvas>
+    <p>操作：左键开格，右键插旗（移动端可切换“插旗模式”）。</p>
+    <div><label><input type="checkbox" id="flagMode"> 插旗模式（移动端）</label></div>
+  </div>
+  <script src="lib/leaderboard.js"></script>
+  <script>
+    (function(){
+      const timeEl = document.getElementById('time');
+      const remainEl = document.getElementById('remain');
+      const newBtn = document.getElementById('new');
+      const rankBtn = document.getElementById('rank');
+      const diffSel = document.getElementById('difficulty');
+      const flagModeEl = document.getElementById('flagMode');
+      const canvas = document.getElementById('c');
+      const ctx = canvas.getContext('2d');
+
+      let R, C, M; // rows, cols, mines
+      let grid, opened, flagged, started, over, timer, startTime;
+      let cellSize, W, H;
+
+      function setupByDiff(){
+        const d = diffSel.value;
+        if(d==='easy'){ R=9; C=9; M=10; }
+        else if(d==='normal'){ R=16; C=16; M=40; }
+        else { R=16; C=30; M=99; }
+        cellSize = Math.floor(Math.min(28, Math.min(560/C, 560/R)));
+        W = C*cellSize; H = R*cellSize; canvas.width=W; canvas.height=H;
+      }
+
+      function init(){
+        setupByDiff();
+        grid = Array.from({length:R}, ()=>Array(C).fill(0));
+        opened = Array.from({length:R}, ()=>Array(C).fill(false));
+        flagged = Array.from({length:R}, ()=>Array(C).fill(false));
+        started=false; over=false; startTime=0; timeEl.textContent='0';
+        if(timer) { clearInterval(timer); timer=null; }
+        draw(); updateRemain();
+      }
+
+      function placeMines(safeR, safeC){
+        let placed=0; const cells=[]; for(let r=0;r<R;r++) for(let c=0;c<C;c++) cells.push([r,c]);
+        // remove safe cell and its neighbors from candidate
+        const safe = new Set();
+        for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++){ const rr=safeR+dr, cc=safeC+dc; if(rr>=0&&rr<R&&cc>=0&&cc<C) safe.add(rr+','+cc); }
+        const cand = cells.filter(([r,c])=> !safe.has(r+','+c));
+        while(placed<M && cand.length){ const i=Math.floor(Math.random()*cand.length); const [r,c]=cand.splice(i,1)[0]; grid[r][c]=-1; placed++; }
+        // numbers
+        for(let r=0;r<R;r++) for(let c=0;c<C;c++) if(grid[r][c]!==-1){ grid[r][c]=countMines(r,c); }
+      }
+
+      function countMines(r,c){ let n=0; for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++){ if(!dr&&!dc) continue; const rr=r+dr, cc=c+dc; if(rr>=0&&rr<R&&cc>=0&&cc<C && grid[rr][cc]===-1) n++; } return n; }
+
+      function updateRemain(){ const f=flagged.flat().filter(x=>x).length; remainEl.textContent = Math.max(0, M - f); }
+
+      function startTimer(){ if(timer) return; startTime=Date.now(); timer=setInterval(()=>{ timeEl.textContent = Math.floor((Date.now()-startTime)/1000); }, 250); }
+      function stopTimer(){ if(timer){ clearInterval(timer); timer=null; } }
+
+      function openCell(r,c){
+        if(over||opened[r][c]||flagged[r][c]) return;
+        if(!started){ placeMines(r,c); started=true; startTimer(); }
+        opened[r][c]=true;
+        if(grid[r][c]===-1){ // mine
+          over=true; stopTimer(); revealAll(); draw();
+          return;
+        }
+        if(grid[r][c]===0){ // flood
+          for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++){
+            const rr=r+dr, cc=c+dc; if(rr>=0&&rr<R&&cc>=0&&cc<C) openCell(rr,cc);
+          }
+        }
+        checkWin();
+      }
+
+      function toggleFlag(r,c){ if(over||opened[r][c]) return; flagged[r][c]=!flagged[r][c]; updateRemain(); draw(); }
+
+      function checkWin(){
+        for(let r=0;r<R;r++) for(let c=0;c<C;c++) if(grid[r][c]!==-1 && !opened[r][c]) return false;
+        over=true; stopTimer();
+        const elapsed = Date.now()-startTime; // ms
+        LB.record({key:'minesweeper', difficulty: diffSel.value, score: elapsed, better:'asc', unit:'ms'});
+        draw();
+        return true;
+      }
+
+      function revealAll(){ for(let r=0;r<R;r++) for(let c=0;c<C;c++) opened[r][c]=true; }
+
+      function draw(){
+        ctx.clearRect(0,0,W,H);
+        for(let r=0;r<R;r++){
+          for(let c=0;c<C;c++){
+            const x=c*cellSize, y=r*cellSize;
+            ctx.lineWidth=1; ctx.strokeStyle='#999';
+            ctx.fillStyle = opened[r][c] ? '#e0e0e0' : '#bbb';
+            ctx.fillRect(x,y,cellSize,cellSize); ctx.strokeRect(x+0.5,y+0.5,cellSize-1,cellSize-1);
+            if(opened[r][c]){
+              if(grid[r][c]===-1){ ctx.fillStyle='#e74c3c'; ctx.beginPath(); ctx.arc(x+cellSize/2,y+cellSize/2, cellSize*0.25, 0, Math.PI*2); ctx.fill(); }
+              else if(grid[r][c]>0){ ctx.fillStyle='#333'; ctx.font=`bold ${Math.floor(cellSize*0.6)}px system-ui`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(grid[r][c], x+cellSize/2, y+cellSize/2); }
+            } else if(flagged[r][c]){
+              ctx.fillStyle='#d11'; ctx.beginPath(); ctx.moveTo(x+cellSize*0.3,y+cellSize*0.75); ctx.lineTo(x+cellSize*0.3,y+cellSize*0.25); ctx.lineTo(x+cellSize*0.7,y+cellSize*0.4); ctx.lineTo(x+cellSize*0.3,y+cellSize*0.55); ctx.closePath(); ctx.fill();
+            }
+          }
+        }
+      }
+
+      // events
+      canvas.addEventListener('click', e=>{
+        const rect=canvas.getBoundingClientRect(); const x=e.clientX-rect.left, y=e.clientY-rect.top; const c=Math.floor(x/cellSize), r=Math.floor(y/cellSize);
+        if(flagModeEl.checked) toggleFlag(r,c); else openCell(r,c);
+        draw();
+      });
+      canvas.addEventListener('contextmenu', e=>{ e.preventDefault(); const rect=canvas.getBoundingClientRect(); const x=e.clientX-rect.left, y=e.clientY-rect.top; const c=Math.floor(x/cellSize), r=Math.floor(y/cellSize); toggleFlag(r,c); });
+      canvas.addEventListener('touchend', e=>{ const t=e.changedTouches[0]; if(!t) return; const rect=canvas.getBoundingClientRect(); const x=t.clientX-rect.left, y=t.clientY-rect.top; const c=Math.floor(x/cellSize), r=Math.floor(y/cellSize); if(flagModeEl.checked) toggleFlag(r,c); else openCell(r,c); draw(); e.preventDefault(); }, {passive:false});
+
+      newBtn.addEventListener('click', init);
+      diffSel.addEventListener('change', init);
+      rankBtn.addEventListener('click', ()=> LB.show({key:'minesweeper', difficulty: diffSel.value, better:'asc', unit:'ms', title:'扫雷 排行榜（用时越少越好）'}));
+
+      init();
+    })();
+  </script>
+</body>
+</html>
+

@@ -24,8 +24,16 @@
     <h1>贪吃蛇</h1>
     <div class="toolbar">
       <span>分数：<span class="score" id="score">0</span></span>
+      <label>难度
+        <select id="difficulty">
+          <option value="easy">简单</option>
+          <option value="normal" selected>普通</option>
+          <option value="hard">困难</option>
+        </select>
+      </label>
       <button id="new">重开</button>
       <button id="pause">暂停</button>
+      <button id="rank">排行榜</button>
       <a class="back" href="index.html">返回目录</a>
     </div>
     <canvas id="c" width="480" height="480" aria-label="贪吃蛇"></canvas>
@@ -35,6 +43,7 @@
       <span></span><button id="down">↓</button><span></span>
     </div>
   </div>
+  <script src="lib/leaderboard.js"></script>
   <script>
     (function(){
       const GRID = 24; // 24x24
@@ -44,13 +53,16 @@
       const scoreEl = document.getElementById('score');
       const newBtn = document.getElementById('new');
       const pauseBtn = document.getElementById('pause');
+      const rankBtn = document.getElementById('rank');
+      const diffSel = document.getElementById('difficulty');
       const keyBtn = {up:document.getElementById('up'),down:document.getElementById('down'),left:document.getElementById('left'),right:document.getElementById('right')};
 
       let snake, dir, nextDir, food, score, timer, paused, over, speed;
 
       function init(){
         snake = [{x:12,y:12}];
-        dir = {x:1,y:0}; nextDir = dir; score=0; paused=false; over=false; speed=120;
+        dir = {x:1,y:0}; nextDir = dir; score=0; paused=false; over=false;
+        const d = diffSel.value; speed = d==='easy'?140: d==='normal'?110: 80;
         placeFood();
         draw();
         start();
@@ -74,9 +86,9 @@
         const head = {x:snake[0].x+dir.x, y:snake[0].y+dir.y};
         // wrap-around 可切换为撞墙死亡：如需撞墙，改为 if(head.x<0||head.y<0||head.x>=GRID||head.y>=GRID) over=true
         if(head.x<0) head.x=GRID-1; if(head.y<0) head.y=GRID-1; if(head.x>=GRID) head.x=0; if(head.y>=GRID) head.y=0;
-        if(snake.some(s=>s.x===head.x&&s.y===head.y)) { over=true; draw(); return; }
+        if(snake.some(s=>s.x===head.x&&s.y===head.y)) { over=true; draw(); onGameOver(); return; }
         snake.unshift(head);
-        if(head.x===food.x && head.y===food.y){ score+=10; speed=Math.max(60, speed-2); clearInterval(timer); timer=setInterval(step,speed); placeFood(); }
+        if(head.x===food.x && head.y===food.y){ score+=10; speed=Math.max(50, speed-2); clearInterval(timer); timer=setInterval(step,speed); placeFood(); }
         else snake.pop();
         draw();
       }
@@ -128,7 +140,13 @@
       keyBtn.right.onclick=()=>setDir(1,0);
 
       canvas.addEventListener('click', ()=>{ if(over){ init(); }});
+      function onGameOver(){
+        LB.record({key:'snake', difficulty: diffSel.value, score, better:'desc', unit:'分'});
+      }
+
       newBtn.addEventListener('click', init);
+      diffSel.addEventListener('change', init);
+      rankBtn.addEventListener('click', ()=> LB.show({key:'snake', difficulty: diffSel.value, better:'desc', unit:'分', title:'贪吃蛇 排行榜'}));
       pauseBtn.addEventListener('click', ()=>{ paused=!paused; draw(); });
 
       init();
@@ -136,4 +154,3 @@
   </script>
 </body>
 </html>
-
